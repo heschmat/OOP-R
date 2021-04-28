@@ -1,0 +1,188 @@
+# S3
+S3 specializes in _function ovrload_; that is, a function's behavior depends on its input class. It helps simplifiying the codebase.
+```{r}
+form <- lm(Ozone ~ Temp, data= airquality)
+summary(form)
+
+summary(rgamma(1e3, 2))
+```
+
+An S3 object is made of 2 elements.
+1. A generic function
+2. methods
+
+In the examples above, `summary` is a `generic function`. The function invokes particular `methods` which depend on the `class` of the first argument. The method name should be like `generic_func.class_name`.
+
+
+A generic function is defined like so:
+```{r}
+summary
+```
+
+
+Note that the arguments to method must include all the arguments to generic. It's good practice to pass the `...` to both the generic as well as the method. 
+
+
+```{r}
+args(summary)
+args(summary.lm)
+args(summary.factor)
+```
+
+Note `all.equal()` is actually a generic function, not a method. We won't be using `leopard.case` for the name of our functions to avoid such confusion.
+```{r}
+isS3stdGeneric(all.equal) # pryr::is_s3_generic('all.equal')
+
+pryr::is_s3_generic("t")           # generic transpose function
+pryr::is_s3_method("t.data.frame") # transpose method for data.frames
+pryr::is_s3_method("t.test")       # a function for Student's t-tests 
+
+# seq.Date
+# is.na.data.frame
+# sort
+# order (it's neither)
+
+```
+
+
+## Creating a Generic Function
+
+The first argument to an S3 generic is usually called x, though this isn't compulsory. It is also good practice to include a `...` argument, in case arguments need to be passed from one method to another.
+
+The generic function calls `UseMethod()` with its own name.
+
+```{r}
+# Create get_n_elements
+get_n_elements <- function(x, ...) {
+  UseMethod('get_n_elements')
+}
+
+```
+
+## Creating an S3 Method
+
+Methods are just regular functions with two conditions:
+1. the name should be like `generic_func.class_name`
+2. The method signature - that is, the arguments that are passed in to the method - must contain the signature of the generic.
+
+```{r}
+# Create a data.frame method for get_n_elements
+get_n_elements.data.frame <- function(x, ...) {
+    return(nrow(x) * ncol(x))
+}
+
+```
+
+You can define a method `generic_func.default` to handle the inputs for which there is no specific method defined. For example, `print.default()` will print any type of object that doesn't have its own print() method.
+
+
+```{r}
+# View predefined objects
+ls.str()
+
+# Create a default method for get_n_elements
+get_n_elements.default <- function(x, ...) {
+    return(length(unlist(x)))
+}
+
+lst <- list(
+  airq = airquality,
+  shape = c(6, 153),
+  col_names = c("Ozone", "Solar.R", "Wind", "Temp", "Month", "Day")
+)
+n <- get_n_elements(lst)
+
+n
+```
+
+
+## Finding Available Methods
+
+```{r}
+# To get all the methods that are available for a generic function.
+methods('is.na')
+methods('print')
+
+methods(class= 'lm') # returns both S3 & S4
+
+.S3methods(class= 'lm')
+```
+
+## Method Lookup for Primitive Generics
+Some core functionality of R is defined using primitive functions, which use a special technique for accessing C-code, for performance reasons. Examples of primitive functions include language elements, like `if` and `for`, operators like `+` and `$`, and mathematical functions like `exp` and `sin`. Primitive functions include S3 generics.
+
+```{r}
+# The complete list of S3 primitive generics:
+.S3PrimitiveGenerics
+```
+
+When an S3 generic is primitive, its lookup process to find methods works slightly differently. R will look for methods using the class, as normal, but if nothing is found, the internal C-based function will be called. (Compare this to regular generics, where an error is thrown if no method is found.) This means that if you override the class of an object, fundamental behavior like calculating the length will not be broken.
+
+```{r}
+# View the structure of hair
+date_range <- c('')
+str()
+
+# What primitive generics are available?
+.S3PrimitiveGenerics
+
+# Does length.hairstylist exist?
+exists('length.hairstylist')
+
+# What is the length of hair?
+length(hair)
+
+```
+
+is.na() is a primitive generic. In the console, look at its available methods.
+When you call is.na(list(TRUE, FALSE, NA))
+Since neither is.na.list() nor is.na.default() exist, the primitive is.na() is called.
+
+## Multiple Classes
+```{r}
+
+x <- c("a", "e", "i", "o", "u")
+class(x) <- c("vowels", "letters", "character")
+
+is.character(x)
+inherits(x, "vowels")
+inherits(x, "character")
+```
+
+When objects have multiple classes, you may wish to call methods for several of these classes. This is done using NextMethod().
+
+```{r}
+# Inspect your workspace
+ls.str()
+
+# cat method
+what_am_i.cat <- function(x, ...)
+{
+  message("I'm a cat")
+  NextMethod('what_am_i')
+}
+
+# mammal method
+what_am_i.mammal <- function(x, ...)
+{
+  message("I'm a mammal")
+  NextMethod('what_am_i')
+}
+
+# character method
+what_am_i.character <- function(x, ...)
+{
+  message("I'm a character vector")
+}
+
+# Call what_am_i()
+what_am_i(kitty)
+
+```
+
+>
+kitty
+[1] "Miaow!"
+attr(,"class")
+[1] "cat"       "mammal"    "character"
+
